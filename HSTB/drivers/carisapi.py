@@ -15,7 +15,6 @@ from collections import defaultdict
 import rasterio
 import glob
 import geopy.distance
-from winreg import ConnectRegistry, HKEY_LOCAL_MACHINE, OpenKey, QueryValueEx
 from win32api import GetFileVersionInfo, LOWORD, HIWORD
 
 from HSTB.Charlene import benchmark
@@ -25,6 +24,7 @@ from HSTB.Charlene import __file__ as charlene_file
 from HSTB.time.UTC import UTCs80ToDateTime
 from HSTB.drivers import hips_project
 from hyo2.grids.grids_manager import GridsManager
+from HSTB.drivers.caris_finder import *
 
 charlene_test_folder = os.path.join(os.path.realpath(os.path.dirname(charlene_file)), 'tests')
 
@@ -63,7 +63,6 @@ caris_framework_vers = {'5.4.0': {'HIPS': '', 'BASE': '5.3.0'}, '5.4.1': {'HIPS'
                         '6.4.0': {'HIPS': '11.3.0', 'BASE': '5.3.15'}, '6.4.1': {'HIPS': '11.3.0', 'BASE': '5.3.15'},
                         '6.4.2': {'HIPS': '11.3.0', 'BASE': '5.4.0'}, '6.4.3': {'HIPS': '11.3.0', 'BASE': '5.4.1'},
                         '6.4.4': {'HIPS': '11.3.1', 'BASE': '5.4.1'}, '6.4.5': {'HIPS': '11.3.2', 'BASE': '5.4.2'}}
-
 
 # lic_success, val = HDCSio.InitLicenseHDCS()
 # if not lic_success:
@@ -727,189 +726,6 @@ def get_base_version_from_carisdll(command):
     return exact_baseversion
 
 
-def caris_command_finder(exe_name, accepted_versions, app_key, get_all_versions=False):
-    """
-        Searches for a specific CARIS executable within the system registry and retrieves the executable path
-        for the first valid version or all accepted versions.
-
-        Parameters:
-        -----------
-        exe_name : str
-            The name of the CARIS executable to search for (e.g., 'carisbatch.exe').
-        accepted_versions : list of str
-            A list of accepted CARIS versions to search for, specified as version strings (e.g., ['10.0', '11.0']).
-        app_key : str
-            The application key under the CARIS registry path to search for (e.g., 'HIPS and SIPS').
-        get_all_versions : bool, optional
-            If True, returns paths for all accepted versions found (default is False).
-
-        Returns:
-        --------
-        tuple or list
-            If get_all_versions is False (default):
-                - Returns a tuple containing:
-                    - batch_engine : str
-                        The full path to the specified CARIS executable for the first valid version found.
-                    - vers : float
-                        The version number as a float of the first valid version found.
-            If get_all_versions is True:
-                - Returns a list of tuples:
-                    - Each tuple contains:
-                        - batch_engine : str
-                            The full path to the specified CARIS executable.
-                        - vers : float
-                            The version number as a float for each valid version found.
-
-        Raises:
-        -------
-        WindowsError
-            If an error occurs while accessing the Windows registry.
-
-        Notes:
-        ------
-        - This function requires access to the Windows registry and will only work on Windows systems.
-        - If no valid CARIS executable is found for any of the provided versions, the returned path will be empty.
-
-        Example:
-        --------
-        >>> caris_command_finder('carisbatch.exe', ['10.0', '11.0'], 'HIPS and SIPS')
-        ('C:\\Program Files\\CARIS\\HIPS and SIPS 10.0\\bin\\carisbatch.exe', 10.0)
-
-        >>> caris_command_finder('carisbatch.exe', ['10.0', '11.0'], 'HIPS and SIPS', get_all_versions=True)
-        [['C:\\Program Files\\CARIS\\HIPS and SIPS 10.0\\bin\\carisbatch.exe', 10.0],
-        ['C:\\Program Files\\CARIS\\HIPS and SIPS 11.0\\bin\\carisbatch.exe', 11.0]]
-        """
-    batch_engine = ''
-    vers = ''
-    versions = []
-    regHKLM = ConnectRegistry(None, HKEY_LOCAL_MACHINE)
-    for vHIPS in accepted_versions:
-        try:
-            kBDB = OpenKey(regHKLM, os.sep.join(('SOFTWARE', 'CARIS', app_key, vHIPS, 'Environment Variables')))
-            p2hipsinst = QueryValueEx(kBDB, "install_dir")[0]
-            batch_engine = os.path.join(p2hipsinst, 'bin', exe_name)
-            # if the carisbatch doesn't exist then continue to the next version of caris
-            if not os.path.exists(batch_engine):
-                continue
-            vers = float(vHIPS)
-            if get_all_versions:
-                versions.append([batch_engine, vers])
-            else:
-                break
-        except WindowsError:
-            continue
-    if get_all_versions:
-        return versions
-    else:
-        return batch_engine, vers
-
-
-def get_hips_command_from_version(vers):
-    """
-           Retrieves the CARIS HIPS batch engine path for a specified version.
-
-           Parameters:
-           -----------
-           vers : float or str
-               The version number of CARIS HIPS and SIPS to search for (e.g., 11.4 or '11.4').
-
-           Returns:
-           --------
-           str
-               The full path to the `carisbatch.exe` executable for the specified CARIS HIPS version.
-
-           Raises:
-           -------
-           Exception
-               If the batch engine for the specified CARIS HIPS version is not found or not installed.
-               """
-    batch_engine, vers = caris_command_finder('carisbatch.exe', (str(vers),), "HIPS")
-    if not batch_engine:
-        raise Exception("No Batch Engine found...is CARIS HIPS and SIPS {} installed?".format(vers))
-    return batch_engine
-
-
-def get_all_hips_versions():
-    """
-            Retrieves paths to the CARIS HIPS batch engine for all installed versions.
-
-            Returns:
-            --------
-            list of tuples
-                A list of tuples containing the full path to `carisbatch.exe` and the version number for each installed version.
-                Each tuple is structured as (batch_engine, version_number).
-
-            Raises:
-            -------
-            Exception
-                If no CARIS HIPS and SIPS versions are found on the system.
-                """
-    versions = caris_command_finder('carisbatch.exe', ('11.4', '11.3', '11.2', '11.1', '10.4', '10.3', '10.2'), "HIPS", get_all_versions=True)
-    if not versions:
-        raise Exception("No Batch Engine found...is CARIS HIPS and SIPS installed?")
-    return versions
-
-
-def command_finder_hips():
-    """
-            Retrieves the CARIS HIPS batch engine path for the first installed version from a predefined list.
-
-            The function searches through versions in the order provided, returning the path and version number for the first valid installation.
-
-            Returns:
-            --------
-            tuple
-                A tuple containing:
-                - batch_engine : str
-                    The full path to `carisbatch.exe` for the first valid CARIS HIPS version found.
-                - vers : float
-                    The version number of the found CARIS HIPS batch engine.
-
-            Raises:
-            -------
-            Exception
-                If no valid CARIS HIPS and SIPS version is found on the system.
-
-            Example:
-            --------
-            >>> command_finder_hips()
-            ('C:\\Program Files\\CARIS\\HIPS and SIPS 11.4\\bin\\carisbatch.exe', 11.4)
-            """
-    batch_engine, vers = caris_command_finder('carisbatch.exe', ('11.4', '11.3', '11.2', '11.1', '10.4', '10.3', '10.2'), "HIPS")
-    if not batch_engine:
-        raise Exception("No Batch Engine found...is CARIS HIPS and SIPS installed?")
-    return batch_engine, vers
-
-
-def command_finder_base():
-    """
-            Retrieves the CARIS BASE Editor batch engine path for the first installed version from a predefined list.
-
-            The function searches through BASE Editor versions in the specified order and returns the path and version number for the first valid installation found.
-
-            Returns:
-            --------
-            tuple
-                A tuple containing:
-                - batch_engine : str
-                    The full path to `carisbatch.exe` for the first valid CARIS BASE Editor version found.
-                - vers : float
-                    The version number of the found CARIS BASE Editor batch engine.
-
-            Raises:
-            -------
-            Exception
-                If no valid CARIS BASE Editor version is found on the system.
-
-            Example:
-            --------
-            >>> command_finder_base()
-            ('C:\\Program Files\\CARIS\\BASE Editor 5.5\\bin\\carisbatch.exe', 5.5)
-            """
-    batch_engine, vers = caris_command_finder('carisbatch.exe', ('5.5', '5.4', '5.3', '5.2', '5.1', '4.4', '4.3', '4.2'), 'BASE Editor')
-    if not batch_engine:
-        raise Exception("No Batch Engine found...is CARIS BASE Editor installed?")
-    return batch_engine, vers
 
 def run_caris_process(command):
     """
