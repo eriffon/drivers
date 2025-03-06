@@ -1087,6 +1087,7 @@ class CarisAPI():
         self.bathy_type = 'MULTIBEAM'
         self.input_format = input_format
         self.logger = logger
+        self.scribble_logger = None
         self.bench = bench
         self.benchcsv = benchcsv
         self.converted_lines = []
@@ -1115,8 +1116,15 @@ class CarisAPI():
                     self.progressbar.UpdatePulse('Running Caris Processes')
 
     def run_this_scribble(self, fullcommand):
-        p = subprocess.Popen(fullcommand)
-        p.wait()
+        if self.scribble_logger is None:
+            p = subprocess.Popen(fullcommand)
+            p.wait()
+        else:
+            if not os.path.exists(os.path.split(self.scribble_logger)[0]):
+                os.makedirs(os.path.split(self.scribble_logger)[0])
+            with open(self.scribble_logger, 'a+') as log:
+                p = subprocess.Popen(fullcommand, stdout=log, stderr=log)
+                p.wait()
 
     def caris_hips_license_check(self, printout=True):
         fullcommand = self.hipscommand + ' --version'
