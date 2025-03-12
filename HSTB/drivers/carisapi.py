@@ -2792,6 +2792,32 @@ class CarisAPI():
         else:
             self.run_this(fullcommand)
 
+    def export_csar_to_bag(self, inputcsar, outputbag, unctype='STDDEV_CUBE',
+                           abstract='Generated via Caris HIPS conversion',
+                           bag_status='COMPLETED', vert_datum='MLLW', party_name='Party Name',
+                           party_position='Party Position', party_organization='Party Organization',
+                           party_role='OWNER', legal_constraints='LICENSE', other_constraints='otherconstraints',
+                           security_constraints='UNCLASSIFIED', notes='Raster BAG',
+                           inputband='Depth', uncband='Uncertainty', scribble=False):
+        '''Runs ExportRaster with all the options.  Example:  carisbatch.exe -r ExportRaster
+                --include-band Depth --uncertainty Uncertainty'''
+
+        fullcommand = self.hipscommand + ' --run ExportRaster --output-format BAG --include-band "' + str(inputband) + '"'
+        fullcommand += ' --uncertainty "' + uncband + '" --uncertainty-type "' + unctype + '" --abstract "' + abstract + '"'
+        fullcommand += ' --status "' + bag_status + '" --vertical-datum "' + vert_datum + '" --party-name "' + party_name + '"'
+        fullcommand += ' --party-position "' + party_position + '" --party-organization "' + party_organization + '"'
+        fullcommand += ' --party-role "' + party_role + '" --legal-constraints "' + legal_constraints + '"'
+        fullcommand += ' --other-constraints "' + other_constraints + '" --security-constraints "' + security_constraints + '"'
+        fullcommand += ' --notes "' + notes + '"'
+        fullcommand += ' "' + inputcsar + '" "' + outputbag + '"'
+
+        if self.bench:
+            self.benchclass.run(fullcommand, self.logger, self.benchcsv, self.progressbar)
+        elif scribble:
+            self.run_this_scribble(fullcommand)
+        else:
+            self.run_this(fullcommand)
+
     def export_coverage_metadata(self, inputcsar, outputxml, profile='ISO19115', forcebase=False):
         '''Runs ExportCoverageToASCII with all the options.  Example:  carisbatch.exe -r exportcoveragetoascii
                 --include-band Depth 9 --output-crs EPSG:6319 --coordinate-format LLDG_DD --coordinate-precision 9
