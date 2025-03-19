@@ -149,7 +149,7 @@ class kmall():
             else:
                 if warn_no_definition:
                     print('Did not find valid datagram identifier: {}'.format(dgram))
-                if dgram[0] == b'#':
+                if dgram[0:1] == b'#':
                     self.read_method = 'error'  # set it to something other than None just to satisfy skip datagram
                     self.skip_datagram()
                 else:
@@ -4013,7 +4013,7 @@ class kmall():
                     dset[var] = dset[var][index]
 
         # some dtype setting to appease the Kluster check
-        recs_to_read['runtime_params']['runtime_settings'] = np.array(recs_to_read['runtime_params']['runtime_settings'], dtype=np.object)
+        recs_to_read['runtime_params']['runtime_settings'] = np.array(recs_to_read['runtime_params']['runtime_settings'], dtype=object)
         # empty processing status that we append for Kluster to use later
         recs_to_read['ping']['processing_status'] = np.zeros_like(recs_to_read['ping']['beampointingangle'], dtype=np.uint8)
         return recs_to_read
@@ -4288,7 +4288,11 @@ class kmall():
                     else:
                         print('unable to read from IIP block {}'.format(rec))
                         continue
-                prefix, first_rec = rec[0].split(':')
+                if ':' not in rec[0] and ('S=CLK' in rec or 'S=POS' in rec):      #handling weird EM2042 case where the CLCK portion of the datagram doesn't have a prefix.
+                    prefix = 'CLCK'
+                    first_rec = rec[0]
+                else:
+                    prefix, first_rec = rec[0].split(':')
                 try:
                     prefix = translate_device_ident[prefix]
                 except KeyError:  # if its a prefix we haven't seen before, just pass it through
