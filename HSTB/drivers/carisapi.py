@@ -781,8 +781,7 @@ def get_bands_from_csar(path_to_csar):
     grids.add_path(path_to_csar)
     list(grids.grid_list)
     grids.set_current(path_to_csar)
-    DEFAULT_CHUNK_SIZE = 1073741824  # 1GB    4294967296  # 4GB
-    grids.open_to_read_current(DEFAULT_CHUNK_SIZE)
+    grids.open_to_read_current()
     return list(grids.layer_names())
 
 
