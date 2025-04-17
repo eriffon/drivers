@@ -1,4 +1,5 @@
 import os, sys, time, re
+from pathlib import Path
 import subprocess
 import numpy as np
 from pyproj import Transformer
@@ -11,6 +12,7 @@ import xml.etree.ElementTree as ET
 import json
 from math import cos, sin, asin, sqrt, degrees
 from collections import defaultdict
+import rasterio
 import glob
 import geopy.distance
 from winreg import ConnectRegistry, HKEY_LOCAL_MACHINE, OpenKey, QueryValueEx
@@ -726,6 +728,57 @@ def get_base_version_from_carisdll(command):
 
 
 def caris_command_finder(exe_name, accepted_versions, app_key, get_all_versions=False):
+    """
+        Searches for a specific CARIS executable within the system registry and retrieves the executable path
+        for the first valid version or all accepted versions.
+
+        Parameters:
+        -----------
+        exe_name : str
+            The name of the CARIS executable to search for (e.g., 'carisbatch.exe').
+        accepted_versions : list of str
+            A list of accepted CARIS versions to search for, specified as version strings (e.g., ['10.0', '11.0']).
+        app_key : str
+            The application key under the CARIS registry path to search for (e.g., 'HIPS and SIPS').
+        get_all_versions : bool, optional
+            If True, returns paths for all accepted versions found (default is False).
+
+        Returns:
+        --------
+        tuple or list
+            If get_all_versions is False (default):
+                - Returns a tuple containing:
+                    - batch_engine : str
+                        The full path to the specified CARIS executable for the first valid version found.
+                    - vers : float
+                        The version number as a float of the first valid version found.
+            If get_all_versions is True:
+                - Returns a list of tuples:
+                    - Each tuple contains:
+                        - batch_engine : str
+                            The full path to the specified CARIS executable.
+                        - vers : float
+                            The version number as a float for each valid version found.
+
+        Raises:
+        -------
+        WindowsError
+            If an error occurs while accessing the Windows registry.
+
+        Notes:
+        ------
+        - This function requires access to the Windows registry and will only work on Windows systems.
+        - If no valid CARIS executable is found for any of the provided versions, the returned path will be empty.
+
+        Example:
+        --------
+        >>> caris_command_finder('carisbatch.exe', ['10.0', '11.0'], 'HIPS and SIPS')
+        ('C:\\Program Files\\CARIS\\HIPS and SIPS 10.0\\bin\\carisbatch.exe', 10.0)
+
+        >>> caris_command_finder('carisbatch.exe', ['10.0', '11.0'], 'HIPS and SIPS', get_all_versions=True)
+        [['C:\\Program Files\\CARIS\\HIPS and SIPS 10.0\\bin\\carisbatch.exe', 10.0],
+        ['C:\\Program Files\\CARIS\\HIPS and SIPS 11.0\\bin\\carisbatch.exe', 11.0]]
+        """
     batch_engine = ''
     vers = ''
     versions = []
@@ -752,6 +805,24 @@ def caris_command_finder(exe_name, accepted_versions, app_key, get_all_versions=
 
 
 def get_hips_command_from_version(vers):
+    """
+           Retrieves the CARIS HIPS batch engine path for a specified version.
+
+           Parameters:
+           -----------
+           vers : float or str
+               The version number of CARIS HIPS and SIPS to search for (e.g., 11.4 or '11.4').
+
+           Returns:
+           --------
+           str
+               The full path to the `carisbatch.exe` executable for the specified CARIS HIPS version.
+
+           Raises:
+           -------
+           Exception
+               If the batch engine for the specified CARIS HIPS version is not found or not installed.
+               """
     batch_engine, vers = caris_command_finder('carisbatch.exe', (str(vers),), "HIPS")
     if not batch_engine:
         raise Exception("No Batch Engine found...is CARIS HIPS and SIPS {} installed?".format(vers))
@@ -759,6 +830,20 @@ def get_hips_command_from_version(vers):
 
 
 def get_all_hips_versions():
+    """
+            Retrieves paths to the CARIS HIPS batch engine for all installed versions.
+
+            Returns:
+            --------
+            list of tuples
+                A list of tuples containing the full path to `carisbatch.exe` and the version number for each installed version.
+                Each tuple is structured as (batch_engine, version_number).
+
+            Raises:
+            -------
+            Exception
+                If no CARIS HIPS and SIPS versions are found on the system.
+                """
     versions = caris_command_finder('carisbatch.exe', ('11.4', '11.3', '11.2', '11.1', '10.4', '10.3', '10.2'), "HIPS", get_all_versions=True)
     if not versions:
         raise Exception("No Batch Engine found...is CARIS HIPS and SIPS installed?")
@@ -766,6 +851,30 @@ def get_all_hips_versions():
 
 
 def command_finder_hips():
+    """
+            Retrieves the CARIS HIPS batch engine path for the first installed version from a predefined list.
+
+            The function searches through versions in the order provided, returning the path and version number for the first valid installation.
+
+            Returns:
+            --------
+            tuple
+                A tuple containing:
+                - batch_engine : str
+                    The full path to `carisbatch.exe` for the first valid CARIS HIPS version found.
+                - vers : float
+                    The version number of the found CARIS HIPS batch engine.
+
+            Raises:
+            -------
+            Exception
+                If no valid CARIS HIPS and SIPS version is found on the system.
+
+            Example:
+            --------
+            >>> command_finder_hips()
+            ('C:\\Program Files\\CARIS\\HIPS and SIPS 11.4\\bin\\carisbatch.exe', 11.4)
+            """
     batch_engine, vers = caris_command_finder('carisbatch.exe', ('11.4', '11.3', '11.2', '11.1', '10.4', '10.3', '10.2'), "HIPS")
     if not batch_engine:
         raise Exception("No Batch Engine found...is CARIS HIPS and SIPS installed?")
@@ -773,11 +882,77 @@ def command_finder_hips():
 
 
 def command_finder_base():
+    """
+            Retrieves the CARIS BASE Editor batch engine path for the first installed version from a predefined list.
+
+            The function searches through BASE Editor versions in the specified order and returns the path and version number for the first valid installation found.
+
+            Returns:
+            --------
+            tuple
+                A tuple containing:
+                - batch_engine : str
+                    The full path to `carisbatch.exe` for the first valid CARIS BASE Editor version found.
+                - vers : float
+                    The version number of the found CARIS BASE Editor batch engine.
+
+            Raises:
+            -------
+            Exception
+                If no valid CARIS BASE Editor version is found on the system.
+
+            Example:
+            --------
+            >>> command_finder_base()
+            ('C:\\Program Files\\CARIS\\BASE Editor 5.5\\bin\\carisbatch.exe', 5.5)
+            """
     batch_engine, vers = caris_command_finder('carisbatch.exe', ('5.5', '5.4', '5.3', '5.2', '5.1', '4.4', '4.3', '4.2'), 'BASE Editor')
     if not batch_engine:
         raise Exception("No Batch Engine found...is CARIS BASE Editor installed?")
     return batch_engine, vers
 
+def run_caris_process(command):
+    """
+    Executes a CARIS batch process command in a subprocess and streams the output in real-time.
+
+    This function runs the given command using a subprocess, captures the standard output and error streams, and
+    prints the outputs to the console in real-time. It is useful for monitoring the execution of long-running
+    processes, such as CARIS batch jobs, providing immediate feedback to the user.
+
+    Parameters:
+    -----------
+    command : list of str
+        The command to execute as a list of strings. This should include the path to the executable followed by
+        any command-line arguments. For example:
+        ['C:\\Program Files\\CARIS\\HIPS and SIPS 11.4\\bin\\carisbatch.exe', '-r', 'input_file']
+
+    Returns:
+    --------
+    None
+
+    Example:
+    --------
+    >>> run_caris_process(['C:\\Program Files\\CARIS\\HIPS and SIPS 11.4\\bin\\carisbatch.exe', '-r', 'input_file'])
+    Output from the process will be streamed to the console in real-time.
+
+    Notes:
+    ------
+    - The function captures and prints both `stdout` and `stderr` outputs, allowing for easier debugging.
+    - Ensure that the command provided is a valid CARIS batch executable with the appropriate arguments.
+    - The function will block until the process is complete, making it suitable for tasks that require real-time output monitoring.
+    """
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    while True:
+        out = process.stdout.read(1).decode("UTF-8")
+        erroroutput = process.stderr.readline().decode('UTF-8')
+        if out == '' and process.poll() is not None:
+            break
+        if out != '':
+            sys.stdout.write(out)
+            sys.stdout.flush()
+        if erroroutput:
+            print(erroroutput.strip())
 
 def get_bands_from_csar(path_to_csar):
     """ Open a csar file and return the bands.  Returns a list.
@@ -796,7 +971,8 @@ def get_bands_from_csar(path_to_csar):
 
 
 def find_csar_band_name(csar, log=None, wldatum='MLLW'):
-    if os.path.splitext(csar)[1] == '.csar':
+    extension = os.path.splitext(csar)[1].lower()
+    if extension == '.csar':
         band_names = get_bands_from_csar(csar)
         out = ''
         b = ''
@@ -840,23 +1016,36 @@ def find_csar_band_name(csar, log=None, wldatum='MLLW'):
                 print(out, file=logger)
                 print(out)
         return b
-    elif os.path.splitext(csar)[1] == '.asc':
+    elif extension == '.asc':
         if log:
             with open(log, 'a+') as logger:
                 print("Found .asc file: using 'Band 1' band name", file=logger)
                 print("Found .asc file: using 'Band 1' band name")
         return 'Band 1'
+    elif extension in ['.tif', '.tiff']:
+        try:
+            with rasterio.open(csar, ) as ds:
+                b = ds.descriptions[0]
+                message = f"Found .tif file: using {b} band name"
+        except:
+            b = ''
+            message = "Failed to find VDatum band name in the .tif file"
+        if log:
+            with open(log, 'a+') as logger:
+                print(message, file=logger)
+                print(message)
+        return b
     else:
         if log:
             with open(log, 'a+') as logger:
-                print("File format unsupported:  Require .asc or .csar file", file=logger)
-                print("File format unsupported:  Require .asc or .csar file")
+                print("File format unsupported:  Require .asc, .tif, or .csar file", file=logger)
+                print("File format unsupported:  Require .asc, .tif, or .csar file")
         return ''
 
 
 def proj_to_epsg(coord, proj):
     # 12/2021 updated in favor of the nad83 2011 epsg codes, from 269XX to 63XX
-    # 08/2023 added NAD83(2011)
+    # 08/2023 added NAD83(2011) 10/2024 added World Mercator (EPSG:3395)
     zone = proj[9:len(proj) - 1]
     hemi = proj[-1]
     if coord == 'NAD83':
@@ -926,6 +1115,8 @@ def proj_to_epsg(coord, proj):
             return '8693'
         else:
             raise IOError('NAD83(MA11): Invalid projection: {}, {}'.format(coord, proj))
+    elif coord == 'World Mercator':
+        return '3395'
     else:
         raise IOError('Invalid coordinate system: {}'.format(coord))
 
@@ -1358,8 +1549,7 @@ class CarisAPI():
                     return
                 print('Converting {} MBES Files...'.format(len(local_raw_file)))
                 for line in local_raw_file:
-                    tempraw = os.path.split(line)[1]
-                    line_path = os.path.join(hdcspath, tempraw[:len(tempraw) - 4])
+                    line_path = os.path.join(hdcspath, Path(line).stem)
                     # If it isnt in the database, you need conversion (it cant be overwritten)
                     try:
                         is_in_hips = hip.get_line_from_path(line_path)
@@ -1488,9 +1678,7 @@ class CarisAPI():
                 lon.append(np.rad2deg(navdata[:, 2].max()))
                 lon.append(np.rad2deg(navdata[:, 2].min()))
             except:
-                basename = os.path.basename(hdcsline)
-                if len(basename) > 20:
-                    raise Exception('Unable to read navigation from line {}'.format(hdcsline))
+                pass
 
         lat = np.array(lat)
         lon = np.array(lon)
@@ -1665,8 +1853,7 @@ class CarisAPI():
                     print('HIPS file must be located in {}'.format(parent_hdcs))
                     return
                 for line in local_raw_file:
-                    tempraw = os.path.split(line)[1]
-                    line_path = os.path.join(hdcspath, tempraw[:len(tempraw) - 4])
+                    line_path = os.path.join(hdcspath, Path(line).stem)
                     # If it isnt in the database, you need conversion (it cant be overwritten)
                     if not hip.get_line_from_path(line_path):
                         need_conversion.extend([line])
@@ -1679,8 +1866,7 @@ class CarisAPI():
 
         for line in local_raw_file:
             rawfiles += '"' + line + '" '
-            tempraw = os.path.split(line)[1]
-            line_path = os.path.join(hdcspath, tempraw[:len(tempraw) - 4])
+            line_path = os.path.join(hdcspath, Path(line).stem)
             self.converted_lines.append(line_path)
 
         if len(rawfiles) > 30000:
@@ -2140,8 +2326,7 @@ class CarisAPI():
         else:
             finaladded = []
             for line in added:
-                justline = os.path.split(line)[1]
-                finaladded.append(justline[:len(justline) - 4])
+                finaladded.append(Path(line).stem)
             last = len(finaladded) % 4
             iters = len(finaladded) / 4
             print('Total lines to Compute TPU = {}'.format(len(finaladded)))
