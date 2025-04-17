@@ -3966,7 +3966,7 @@ class kmall():
                     dset[var] = dset[var][index]
 
         # some dtype setting to appease the Kluster check
-        recs_to_read['runtime_params']['runtime_settings'] = np.array(recs_to_read['runtime_params']['runtime_settings'], dtype=np.object)
+        recs_to_read['runtime_params']['runtime_settings'] = np.array(recs_to_read['runtime_params']['runtime_settings'], dtype=object)
         # empty processing status that we append for Kluster to use later
         recs_to_read['ping']['processing_status'] = np.zeros_like(recs_to_read['ping']['beampointingangle'], dtype=np.uint8)
         return recs_to_read
